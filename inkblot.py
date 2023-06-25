@@ -1,3 +1,4 @@
+from glob import escape
 import tkinter as tk
 import numpy as np
 from opensimplex import noise3array, random_seed
@@ -10,7 +11,8 @@ SHIFT_SPEED = 0.05
 THRESHOLD_MASK = True
 THRESHOLD_VALUE = 128
 PAUSE = False
-
+SCROLL_CTRL = True
+QUIT = False
 
 random_seed()
 x_y_axis = np.arange(0,IMG_DIM_X/2)/75
@@ -32,13 +34,13 @@ BOTTOM = 1
 PULL = 50
 
 def contrast(num):
-	delta = num * (PULL/100)
+    delta = num * (PULL/100)
 
-	if num > (TOP + BOTTOM)/2:
-		return delta
-	
-	else:
-		return BOTTOM - delta
+    if num > (TOP + BOTTOM)/2:
+        return delta
+    
+    else:
+        return BOTTOM - delta
 
 def gen_img(noise):
     img = Image.new('RGB', (IMG_DIM_X, IMG_DIM_Y), 'white')
@@ -67,38 +69,59 @@ def pause(_):
     global PAUSE
     PAUSE = not PAUSE
 
+def escape(_):
+    global QUIT
+    QUIT = not QUIT
+
+def scroll_ctrl(_):
+    global SCROLL_CTRL
+    SCROLL_CTRL = not SCROLL_CTRL
+
 def change_threshold(e):
     global THRESHOLD_VALUE, PULL
 
-    if THRESHOLD_MASK: THRESHOLD_VALUE -= (e.delta / 120)
-    else: PULL -= (e.delta / 120)
+    if SCROLL_CTRL: THRESHOLD_VALUE -= (e.delta / 120)
+    else:
+        PULL -= (e.delta / 120)
+        if PULL > 100: PULL = 100
+        if PULL < 0: PULL = 0
 
-root = tk.Tk()
-root.geometry(f"{IMG_DIM_X}x{IMG_DIM_Y}")
-root.resizable(False, False)
+def main():
+	def update_img():
+		nonlocal z_axis
+		if not PAUSE: z_axis += SHIFT_SPEED
+		
+		imgTK = ImageTk.PhotoImage(gen_img(gen_noise(z_axis)))
+		label.configure(image=imgTK)
+		label.update()
+		
+		if QUIT: root.quit()
+		else: label.after(0, update_img)
 
-root.update()
-imgHeight = (root.winfo_width(), root.winfo_height())
+	root = tk.Tk()
+	root.geometry(f"{IMG_DIM_X}x{IMG_DIM_Y}")
+	root.resizable(False, False)
 
-label = tk.Label(root)
-label.pack(expand=True, fill="both")
-label.bind("<Button-1>", click_func)
-label.focus_set()
-label.bind("<space>", pause)
-label.bind("<MouseWheel>", lambda e: change_threshold(e))
+	root.update()
 
-z_axis = np.zeros(1)
-def update_img():
-    global z_axis
-    if not PAUSE: z_axis += SHIFT_SPEED
-    noise = gen_noise(z_axis)
-    
-    image = gen_img(noise)
-    imgTK = ImageTk.PhotoImage(image.resize(imgHeight, resample=Image.NEAREST))
-    label.configure(image=imgTK)
-    label.update()
-    label.after(0, update_img)
+	label = tk.Label(root)
+	label.pack(expand=True, fill="both")
+	label.bind("<Button-1>", click_func)
+	label.bind("<Button-2>", scroll_ctrl)
+	label.focus_set()
+	label.bind("<space>", pause)
+	label.bind("<Escape>", escape)
+	label.bind("<MouseWheel>", lambda e: change_threshold(e))
 
+	z_axis = np.zeros(1)
 
-label.after(0, update_img)
-root.mainloop()
+	label.after(0, update_img)
+	root.mainloop()
+
+import cProfile
+cProfile.runctx('main()', globals=globals(), locals=locals(), filename="output.dat")
+
+import pstats
+with open('output_time.txt', 'w') as f:
+	p = pstats.Stats('output.dat', stream=f)
+	p.sort_stats('time').print_stats()
